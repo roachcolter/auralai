@@ -1,2 +1,2 @@
-# auralai
-kacamata si buta (kasibu)
+# AuralAI
+Kacamata
