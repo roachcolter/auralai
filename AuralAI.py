@@ -1,5 +1,3 @@
-from typing import Self, Text
-from maix._maix.audio import Player
 from maix._maix.peripheral.gpio import GPIO
 import requests
 import os
@@ -57,9 +55,11 @@ def speak(text):
 
 # Function to convert MP3 to PCM
 def convert_mp3_to_pcm(mp3_file, pcm_file, target_sample_rate=48000):
+    print("CONVERTING TO PCM")
     audio1 = AudioSegment.from_mp3(mp3_file)
     audio1 = audio1.set_frame_rate(target_sample_rate)
     audio1.export(pcm_file, format="s16le")
+    print("CONVERTED TO PCM")
 
 # Open and read PCM data
 def play_pcm_in_chunks(filename, chunk_size):
@@ -125,8 +125,8 @@ PORT = 12345  # Same port as used by the server
 try:
     w = network.wifi.Wifi()
     print("IP:", w.get_ip())
-    SSID = "Aural"
-    PASSWORD = "roach2024"
+    SSID = "ocher"
+    PASSWORD = "ochaahco"
     print("Connecting to", SSID)
     e = w.connect(SSID, PASSWORD, wait=True, timeout=15)
     err.check_raise(e, "Failed to connect to WiFi")
@@ -143,6 +143,27 @@ else:
     pass
     print("NTPD process not found.")
 
+#Starters
+os.system('ntpdate asia.pool.ntp.org')
+API_KEY = "sk-proj-PIEy1k039iVBHIeJFOlUT3BlbkFJKhbXkgLYyFnOpBm2EASR"
+MODEL = "gpt-4o"
+URL = "https://api.openai.com/v1/chat/completions"
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
+
+cam = camera.Camera(320, 512)   # Manually set resolution, default is too large
+disp = display.Display(320, 512) 
+img2 = gambar.Image(disp.width(), disp.height())
+audio_folder = '/root/pcm/'
+detector = nn.YOLOv5(model="/root/models/yolov5s.mud")
+camoffline = camera.Camera(detector.input_width(), detector.input_height(), detector.input_format())
+
+# Tombol
+button_pin = GPIO(pin="GPIOA17", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
+button_pin2 = GPIO(pin="GPIOA19", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
+
 # Function to measure button press duration
 def measure_button_press_duration(button_pin):
     start_time = None
@@ -158,74 +179,61 @@ def measure_button_press_duration(button_pin):
                 return duration
         time.sleep(0.01)  # Small delay to debounce the button
 
-#Starters
-os.system('ntpdate asia.pool.ntp.org')
-API_KEY = "sk-proj-PIEy1k039iVBHIeJFOlUT3BlbkFJKhbXkgLYyFnOpBm2EASR"
-MODEL = "gpt-4o"
-URL = "https://api.openai.com/v1/chat/completions"
-headers = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json"
-}
-ts = touchscreen.TouchScreen()
-cam = camera.Camera(320, 512)   # Manually set resolution, default is too large
-disp = display.Display(320, 512)  
-img2 = gambar.Image(disp.width(), disp.height())
-audio_folder = '/root/pcm/'
-detector = nn.YOLOv5(model="/root/models/yolov5s.mud")
-camoffline = camera.Camera(detector.input_width(), detector.input_height(), detector.input_format())
-
-#Tombol
-button_pin = GPIO(pin="GPIOA17", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
-button_pin2 = GPIO(pin="GPIOA19", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
-
 #Audio
 pinmap.set_pin_function("A24", "GPIOA24")
 transistor = gpio.GPIO("GPIOA24", gpio.Mode.OUT)
 p = audio.Player(channel=1)
 print("sample_rate:{} format:{} channel:{}".format(p.sample_rate(), p.format(), p.channel()))
 mp3_file = '/root/output.mp3'
-pcm_file = '/root/kontol.pcm'
-chunk_size = 512  # Adjusted chunk size
+pcm_file = '/root/suara.pcm'
+chunk_size = 512 # Adjusted chunk size
+
+def restart_alsa():
+    try:
+        # Run the command to restart ALSA
+        subprocess.run(['sudo', 'alsa', 'force-reload'], check=True)
+        print("ALSA mixer restarted successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
 
 ########################################################
 
-#########ONLINE##########
-
 # Main loop
 while not app.need_exit():
+    if os.path.exists('/root/suara.pcm'):
+        os.remove('/root/suara.pcm')
     transistor.value(0)
     # Measure the duration of the button press
     duration = measure_button_press_duration(button_pin)
     print("Standby...")
     print("----------")
     if duration is not None:
+        # Online Mode
         if duration < 1:
-            # Online Mode
             try:
                 print("Online Mode")
-                disp.show(img2)
                 if os.path.exists('/root/jawaban.txt'):
                     os.remove('/root/jawaban.txt')
                 if os.path.exists('/root/output.mp3'):
                     os.remove('/root/output.mp3')
                 
+                #Take Picture
                 img = cam.read()
                 img.save("/root/test.jpg")
                 image_path = '/root/test.jpg'
                 image = Image.open(image_path)
                 disp.show(img)
-                
+                #Rotate Picture
                 rotated_image = image.rotate(90, expand=True)
                 rotated_image.save('/root/test2.jpg')
                 image_path = ("/root/test2.jpg")
-                
+                #Encode Picture
                 def encode_image(image_path):
                     with open(image_path, "rb") as image_file:
                         return base64.b64encode(image_file.read()).decode("utf-8")
-                
                 base64_image = encode_image(image_path)
                 
+                #Send to Chat-GPT
                 payload = {
                     "model": MODEL,
                     "messages": [
@@ -237,7 +245,6 @@ while not app.need_exit():
                         ]}
                     ],
                 }
-                
                 response = requests.post(URL, headers=headers, json=payload)
                 jawaban = str("")
                 if response.status_code == 200:
@@ -247,22 +254,22 @@ while not app.need_exit():
                 else:
                     print(f"Error: {response.status_code}, {response.text}")
                 
+                #Google Text-To-Speech
                 speak(jawaban)
                 if os.path.exists("/root/output.mp3"):
                     print("TTS Dibuat")
-                
                 with open("/root/jawaban.txt", "w") as file:
                     file.write(jawaban)
                 print("File has been written.")
+
+                # with open("/root/modeonline.txt", "w") as file:
+                #     file.write("1")
+                # print("Online Mode.")
+                # file_name = '/root/modeonline.txt'
+                # send_file2(HOST, PORT, file_name)
+                # time.sleep(0.2)
                 
-                with open("/root/modeonline.txt", "w") as file:
-                    file.write("1")
-                print("Online Mode.")
-                
-                file_name = '/root/modeonline.txt'
-                send_file2(HOST, PORT, file_name)
-                time.sleep(0.2)
-                
+                #Play Sound
                 convert_mp3_to_pcm(mp3_file, pcm_file)
                 transistor.value(1)
                 play_pcm_in_chunks(pcm_file, chunk_size)                
@@ -279,10 +286,11 @@ while not app.need_exit():
                 # send_file2(HOST, PORT, file_name)
                 # print("All files sent.")
                 
+                #Clearings
                 if os.path.exists('/root/output.mp3'):
                     os.remove('/root/output.mp3')
-                if os.path.exists('/root/output.pcm'):
-                    os.remove('/root/output.pcm')
+                if os.path.exists('/root/suara.pcm'):
+                    os.remove('/root/suara.pcm')
                 if os.path.exists('/root/jawaban.txt'):
                     os.remove('/root/jawaban.txt')
                 
@@ -291,8 +299,8 @@ while not app.need_exit():
             except RequestException as e:
                 print(f"An error occurred: {e}")
         
+        # Offline Mode
         elif 1 <= duration < 3:
-            # Offline Mode
             try:
                 print("Offline Mode")
                 img = camoffline.read()
@@ -332,7 +340,6 @@ while not app.need_exit():
                     disp.show(img3)
                     send_text_file_for_object(objek)
                     time.sleep(3.5)
-            
             except Exception as e:
                 print(f"An error occurred: {e}")
         
