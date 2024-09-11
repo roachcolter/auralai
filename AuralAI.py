@@ -1,4 +1,5 @@
 from maix._maix.peripheral.gpio import GPIO
+from mutagen.mp3 import MP3
 import requests
 import os
 import sys
@@ -120,49 +121,49 @@ def intro():
 
 
 #Wifi Connect
-HOST = '192.168.1.10'  # Replace with the server's IP address
-PORT = 12345  # Same port as used by the server
-try:
-    w = network.wifi.Wifi()
-    print("IP:", w.get_ip())
-    SSID = "ocher"
-    PASSWORD = "ochaahco"
-    print("Connecting to", SSID)
-    e = w.connect(SSID, PASSWORD, wait=True, timeout=15)
-    err.check_raise(e, "Failed to connect to WiFi")
-    print("IP:", w.get_ip())
-except RuntimeError as e:
-    print("No wifi detected")
-    pass
-#Time-Sync
-pid = get_ntpd_pid()
-if pid:
-    kill_ntpd(pid)
-    print("NTPD process.")
-else:
-    pass
-    print("NTPD process not found.")
+# HOST = '192.168.1.10'  # Replace with the server's IP address
+# PORT = 12345  # Same port as used by the server
+# try:
+#     w = network.wifi.Wifi()
+#     print("IP:", w.get_ip())
+#     SSID = "ocher"
+#     PASSWORD = "ochaahco"
+#     print("Connecting to", SSID)
+#     e = w.connect(SSID, PASSWORD, wait=True, timeout=15)
+#     err.check_raise(e, "Failed to connect to WiFi")
+#     print("IP:", w.get_ip())
+# except RuntimeError as e:
+#     print("No wifi detected")
+#     pass
+# #Time-Sync
+# pid = get_ntpd_pid()
+# if pid:
+#     kill_ntpd(pid)
+#     print("NTPD process.")
+# else:
+#     pass
+#     print("NTPD process not found.")
 
-#Starters
-os.system('ntpdate asia.pool.ntp.org')
-API_KEY = "sk-proj-PIEy1k039iVBHIeJFOlUT3BlbkFJKhbXkgLYyFnOpBm2EASR"
-MODEL = "gpt-4o"
-URL = "https://api.openai.com/v1/chat/completions"
-headers = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json"
-}
+# #Starters
+# os.system('ntpdate asia.pool.ntp.org')
+# API_KEY = "sk-proj-PIEy1k039iVBHIeJFOlUT3BlbkFJKhbXkgLYyFnOpBm2EASR"
+# MODEL = "gpt-4o"
+# URL = "https://api.openai.com/v1/chat/completions"
+# headers = {
+#     "Authorization": f"Bearer {API_KEY}",
+#     "Content-Type": "application/json"
+# }
 
-cam = camera.Camera(320, 512)   # Manually set resolution, default is too large
-disp = display.Display(320, 512) 
-img2 = gambar.Image(disp.width(), disp.height())
-audio_folder = '/root/pcm/'
-detector = nn.YOLOv5(model="/root/models/yolov5s.mud")
-camoffline = camera.Camera(detector.input_width(), detector.input_height(), detector.input_format())
+# cam = camera.Camera(320, 512)   # Manually set resolution, default is too large
+# disp = display.Display(320, 512) 
+# img2 = gambar.Image(disp.width(), disp.height())
+# audio_folder = '/root/pcm/'
+# detector = nn.YOLOv5(model="/root/models/yolov5s.mud")
+# camoffline = camera.Camera(detector.input_width(), detector.input_height(), detector.input_format())
 
-# Tombol
-button_pin = GPIO(pin="GPIOA17", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
-button_pin2 = GPIO(pin="GPIOA19", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
+# # Tombol
+# button_pin = GPIO(pin="GPIOA17", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
+# button_pin2 = GPIO(pin="GPIOA19", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
 
 # Function to measure button press duration
 def measure_button_press_duration(button_pin):
@@ -182,11 +183,14 @@ def measure_button_press_duration(button_pin):
 #Audio
 pinmap.set_pin_function("A24", "GPIOA24")
 transistor = gpio.GPIO("GPIOA24", gpio.Mode.OUT)
-p = audio.Player(channel=1)
+p = audio.Player(channel=2)
 print("sample_rate:{} format:{} channel:{}".format(p.sample_rate(), p.format(), p.channel()))
-mp3_file = '/root/output.mp3'
+mp3_file = '/root/riders.mp3'
 pcm_file = '/root/suara.pcm'
 chunk_size = 512 # Adjusted chunk size
+durasi = MP3('/root/riders.mp3')
+length_in_seconds = durasi.info.length
+length_plus_one = (int(length_in_seconds) * (34/100))
 
 def restart_alsa():
     try:
@@ -202,6 +206,10 @@ def restart_alsa():
 while not app.need_exit():
     if os.path.exists('/root/suara.pcm'):
         os.remove('/root/suara.pcm')
+    convert_mp3_to_pcm(mp3_file,pcm_file)
+    time.sleep(1)
+    play_pcm_in_chunks(pcm_file,chunk_size)
+    time.sleep(5)
     transistor.value(0)
     # Measure the duration of the button press
     duration = measure_button_press_duration(button_pin)
