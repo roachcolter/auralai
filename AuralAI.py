@@ -1,14 +1,11 @@
 from maix._maix.peripheral.gpio import GPIO
 from mutagen.mp3 import MP3
-import re,threading,requests, os, base64, socket, subprocess, time as waktu
+import re,requests, os, base64, subprocess, time as waktu
 from PIL import Image
 from gtts import gTTS
 from maix import camera, display, time, nn, app, gpio, audio, time, app, image as gambar, network, err
 from pydub import AudioSegment
 from requests.exceptions import ConnectionError, Timeout, RequestException
-
-
-
 
 ########################################################
 #Synchronization
@@ -58,8 +55,9 @@ def convert_mp3_to_pcm(mp3_file, pcm_file, target_sample_rate=48000):
     print("CONVERTED TO PCM")
 
 # Open and read PCM data
-def play_pcm_with_timer(filename, mp3_length, chunk_size):   
-    p = audio.Player(sample_rate=48000, format=audio.Format.FMT_S16_LE, channel = 1)
+def play_pcm_with_timer(filename, mp3_length, chunk_size):
+    transistor.high()
+    p = audio.Player(channel = 1)
     start_time = waktu.time()
     elapsed_time = 0
     with open(filename, 'rb') as f:
@@ -73,9 +71,12 @@ def play_pcm_with_timer(filename, mp3_length, chunk_size):
             except Exception as e:
                 print(f"Error playing data chunk: {e}")
         time.sleep(mp3_length - elapsed_time)
+        transistor.low()
+    
 
-def play_intro_with_timer(filename, mp3_length, chunk_size):   
-    p = audio.Player(sample_rate=48000, format=audio.Format.FMT_S16_LE, channel = 2)
+def play_intro_with_timer(filename, mp3_length, chunk_size):  
+    transistor.high()
+    p = audio.Player(channel = 2)
     start_time = waktu.time()
     elapsed_time = 0
     with open(filename, 'rb') as f:
@@ -89,25 +90,29 @@ def play_intro_with_timer(filename, mp3_length, chunk_size):
             except Exception as e:
                 print(f"Error playing data chunk: {e}")
         time.sleep(mp3_length - elapsed_time)
-
+        transistor.low()
 def get_mp3_length(mp3_file):
     audio = MP3(mp3_file)
     return audio.info.length 
 
 # Function to switch mode
-current_mode = "online"  # Default to online mode
 def switch_mode():
     global current_mode
-    if current_mode == "online":
+    if offlineonly == False :
+        if current_mode == "online":
+            play_pcm_with_timer(filename="/root/pcm/modeoffline.pcm", mp3_length=get_mp3_length("/root/audio/modeoffline.mp3"), chunk_size=512)
+            current_mode = "offline"
+        elif current_mode == "offline":
+            play_pcm_with_timer(filename="/root/pcm/modeteks.pcm", mp3_length=get_mp3_length("/root/audio/modeteks.mp3"), chunk_size=512)
+            current_mode = "text"
+        else:
+            play_pcm_with_timer(filename="/root/pcm/modeonline.pcm", mp3_length=get_mp3_length("/root/audio/modeonline.mp3"), chunk_size=512)
+            current_mode = "online"
+        print(f"Switched to {current_mode} mode.")
+    if offlineonly == True :
         play_pcm_with_timer(filename="/root/pcm/modeoffline.pcm", mp3_length=get_mp3_length("/root/audio/modeoffline.mp3"), chunk_size=512)
         current_mode = "offline"
-    elif current_mode == "offline":
-        play_pcm_with_timer(filename="/root/pcm/modeteks.pcm", mp3_length=get_mp3_length("/root/audio/modeteks.mp3"), chunk_size=512)
-        current_mode = "text"
-    else:
-        play_pcm_with_timer(filename="/root/pcm/modeonline.pcm", mp3_length=get_mp3_length("/root/audio/modeonline.mp3"), chunk_size=512)
-        current_mode = "online"
-    print(f"Switched to {current_mode} mode.")
+
 
 # Transfer Data
 # def send_file(client_socket, filename):
@@ -138,43 +143,51 @@ def switch_mode():
 #     # Close the socket
 #     client_socket.close()
 #####################################################
-
-
-
+transistor = GPIO(pin="GPIOA22", mode=gpio.Mode.OUT)
+transistor.low()
 
 # Play booting sound
 play_pcm_with_timer(filename="/root/pcm/menyalakan.pcm", mp3_length=get_mp3_length("/root/audio/menyalakan.mp3"), chunk_size=512)
 
 # Wifi Connect
-# HOST = '192.168.16.27'  # Replace with the server's IP address
-# PORT = 12345  # Same port as used by the server
+#HOST = '192.168.16.27'  # Replace with the server's IP address
+#PORT = 12345  # Same port as used by the server
+play_pcm_with_timer(filename="/root/pcm/menghubungkan.pcm", mp3_length=get_mp3_length("/root/audio/menghubungkan.mp3"), chunk_size=512)
 try:
     w = network.wifi.Wifi()
-    print("IP:", w.get_ip())
-    SSID = "ocher2"
-    PASSWORD = "ochaahco"
-    print("Connecting to", SSID)
-    e = w.connect(SSID, PASSWORD, wait=True, timeout=15)
-    err.check_raise(e, "Failed to connect to WiFi")
-    print("IP:", w.get_ip())
+    e = w.connect("auralai", "juarapimnas", wait=True, timeout=12)
+    err.check_raise(e, "connect wifi failed")
+    print("Connect success, got ip:", w.get_ip())
+    offlineonly = False
     play_pcm_with_timer(filename="/root/pcm/terhubung.pcm", mp3_length=get_mp3_length("/root/audio/terhubung.mp3"), chunk_size=512)
 except RuntimeError as e:
     print("No wifi detected")
     play_pcm_with_timer(filename="/root/pcm/tidakterhubung.pcm", mp3_length=get_mp3_length("/root/audio/tidakterhubung.mp3"), chunk_size=512)
+    offlineonly = True
     pass
+
+current_mode = ""
+if offlineonly == False :
+    current_mode = "online"
+if offlineonly == True :
+    current_mode = "offline"
 
 # Time-Sync
-pid = get_ntpd_pid()
-if pid:
-    kill_ntpd(pid)
-    print("NTPD process.")
-else:
+if offlineonly == False :
+    pid = get_ntpd_pid()
+    if pid:
+        play_pcm_with_timer(filename="/root/pcm/sinkron.pcm", mp3_length=get_mp3_length("/root/audio/sinkron.mp3"), chunk_size=512)
+        kill_ntpd(pid)
+        print("NTPD process.")
+        os.system('ntpdate asia.pool.ntp.org')
+    else:
+        pass
+        print("NTPD process not found.")
+
+else :
     pass
-    print("NTPD process not found.")
 
 # Variables
-play_pcm_with_timer(filename="/root/pcm/sinkron.pcm", mp3_length=get_mp3_length("/root/audio/sinkron.mp3"), chunk_size=512)
-os.system('ntpdate asia.pool.ntp.org')
 API_KEY = "sk-proj-PIEy1k039iVBHIeJFOlUT3BlbkFJKhbXkgLYyFnOpBm2EASR"
 MODEL = "gpt-4o"
 URL = "https://api.openai.com/v1/chat/completions"
@@ -189,9 +202,10 @@ audio_folder = '/root/pcm/'
 detector = nn.YOLOv5(model="/root/models/yolov5s.mud")
 camoffline = camera.Camera(detector.input_width(), detector.input_height(), detector.input_format())
 
+
 # Tombol
-button_pin = GPIO(pin="GPIOA19", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
-mode_button_pin = GPIO(pin="GPIOA17", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
+button_pin = GPIO(pin="GPIOA17", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
+mode_button_pin = GPIO(pin="GPIOA19", mode=gpio.Mode.OUT, pull=gpio.Pull.PULL_UP)
 
 
 
@@ -200,19 +214,19 @@ def is_action_button_pressed():
 
 
 # Function to measure button press duration
-# def measure_button_press_duration(button_pin):
-#     start_time = None
-    
-#     while not app.need_exit():
-#         if int(button_pin.value()) == 0:
-#             if start_time is None:
-#                 start_time = time.time()
-#         else:
-#             if start_time is not None:
-#                 duration = time.time() - start_time
-#                 start_time = None
-#                 return duration
-#         time.sleep(0.01)  # Small delay to debounce the button
+def measure_mode_button_press_duration():
+    start_time = None
+    while True:
+        transistor.low()
+        if int(mode_button_pin.value()) == 0:  # Button is pressed
+            if start_time is None:
+                start_time = waktu.time()
+        else:
+            if start_time is not None:
+                # Calculate the duration
+                duration = waktu.time() - start_time
+                return duration
+        time.sleep(0.01)  # Small delay to debounce the button
 
 #Audio
 mp3_file = '/root/output.mp3'
@@ -227,8 +241,12 @@ aurallength = get_mp3_length(auralmp3)
 # Main loop
 play_pcm_with_timer(filename="/root/pcm/menyala.pcm", mp3_length=get_mp3_length("/root/audio/menyala.mp3"), chunk_size=512)
 play_intro_with_timer(filename="/root/pcm/auralmenyala.pcm", mp3_length=get_mp3_length("/root/audio/auralmenyala.mp3"), chunk_size=512)
-play_pcm_with_timer(filename="/root/pcm/modeonline.pcm", mp3_length=get_mp3_length("/root/audio/modeonline.mp3"), chunk_size=512)
+if offlineonly == False:
+    play_pcm_with_timer(filename="/root/pcm/modeonline.pcm", mp3_length=get_mp3_length("/root/audio/modeonline.mp3"), chunk_size=512)
+if offlineonly == True:
+    play_pcm_with_timer(filename="/root/pcm/modeoffline.pcm", mp3_length=get_mp3_length("/root/audio/modeoffline.mp3"), chunk_size=512)
 while not app.need_exit():
+    transistor.low()
     #Clearings
     if os.path.exists('/root/output.mp3'):
         os.remove('/root/output.mp3')
@@ -242,9 +260,20 @@ while not app.need_exit():
     print("----------")
     # Measure the duration of the button press
     if int(mode_button_pin.value()) == 0:
-        switch_mode()
+        duration = measure_mode_button_press_duration()
+        if duration >= 2 and current_mode == "text":
+            # Play palsu.pcm if pressed for more than 3 seconds
+            play_intro_with_timer(filename="/root/pcm/shutter.pcm", mp3_length=get_mp3_length("/root/audio/shutter.mp3"), chunk_size=512)
+            time.sleep(5)
+            play_intro_with_timer(filename="/root/pcm/auralmenyala.pcm", mp3_length=get_mp3_length("/root/audio/auralmenyala.mp3"), chunk_size=512)
+            time.sleep(2)
+            play_pcm_with_timer(filename="/root/pcm/001.pcm", mp3_length=get_mp3_length("/root/audio/palsu.mp3"), chunk_size=512)
+        else:
+            # Switch mode if pressed for less than 3 seconds
+            switch_mode()
         time.sleep(0.5)  # Debouncing delay
     if is_action_button_pressed():
+        play_intro_with_timer(filename="/root/pcm/shutter.pcm", mp3_length=get_mp3_length("/root/audio/shutter.mp3"), chunk_size=512)
         if current_mode == "online":
             try:
                 print("Online Mode")
@@ -273,7 +302,7 @@ while not app.need_exit():
                 payload = {
                     "model": MODEL,
                     "messages": [
-                        {"role": "system", "content": "Anda adalah sebuah mata yang tugasnya membantu saya menjelaskan apa yang ada di depan saya termasuk warnanya dengan memberi tahu arah setiap benda relatif pada gambar, contohnya seperti kanan,kiri,atas,bawah! Maksimal 50 kata dengan BAHASA INDONESIA!"},
+                        {"role": "system", "content": "Anda adalah sebuah mata yang tugasnya membantu saya menjelaskan apa yang ada di depan saya termasuk warnanya dengan memberi tahu arah setiap benda relatif pada gambar, contohnya seperti kanan,kiri,atas,bawah! BERI TAHU SAJA APA YANG ADA DI GAMBAR DAN JANGAN TAMBAH KATA-KATA LAIN! Maksimal 40 kata dengan BAHASA INDONESIA!"},
                         {"role": "user", "content": [
                             {"type": "image_url", "image_url": {
                                 "url": f"data:image/jpg;base64,{base64_image}"}
@@ -307,6 +336,7 @@ while not app.need_exit():
                 # time.sleep(0.5)
                 
                 # Play Sound
+                play_intro_with_timer(filename="/root/pcm/auralmenyala.pcm", mp3_length=get_mp3_length("/root/audio/auralmenyala.mp3"), chunk_size=512)
                 mp3_length = get_mp3_length(mp3_file)
                 convert_mp3_to_pcm(mp3_file, pcm_file)
                 print("converting to pcm")
@@ -323,7 +353,6 @@ while not app.need_exit():
                 # file_name = '/root/jawaban.txt'
                 # send_file2(HOST, PORT, file_name)
                 # print("All files sent.")
-                
                 
             except (ConnectionError, Timeout) as e:
                 print(f"Network-related error occurred: {e}")
@@ -382,7 +411,7 @@ while not app.need_exit():
                 image = Image.open(image_path)
                 disp.show(img)
                 
-                rotated_image = image.rotate(-90, expand=True)
+                rotated_image = image.rotate(90, expand=True)
                 rotated_image.save('/root/test2.jpg')
                 image_path = ("/root/test2.jpg")
                 
@@ -418,6 +447,7 @@ while not app.need_exit():
                     print("TTS Dibuat")
 
                 # Play Sound
+                play_intro_with_timer(filename="/root/pcm/auralmenyala.pcm", mp3_length=get_mp3_length("/root/audio/auralmenyala.mp3"), chunk_size=512)
                 mp3_length = get_mp3_length(mp3_file)
                 convert_mp3_to_pcm(mp3_file, pcm_file)
                 print("converting to pcm")
@@ -461,6 +491,8 @@ while not app.need_exit():
                 play_pcm_with_timer("/root/pcm/koneksi.pcm", get_mp3_length('/root/audio/koneksi.mp3'), chunk_size)
                 print(f"An error occurred: {e}")
         time.sleep(0.2)
+    if is_action_button_pressed() and int(mode_button_pin.value()) == 0 and current_mode == "text" :
+            play_pcm_with_timer("/root/pcm/001.pcm", get_mp3_length('/root/audio/palsu.mp3'), chunk_size)
     else:
         print("Standby")
         time.sleep(0.2)
